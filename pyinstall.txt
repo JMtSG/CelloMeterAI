@@ -1,0 +1,2 @@
+# Enter the conda environment first
+pyinstaller --hidden-import=models.yolo --name Program_Files cell_counter.py

@@ -3,18 +3,23 @@ import cv2
 import torch
 import torch.backends.cudnn as cudnn
 
-from settings import *
 from models.experimental import attempt_load
 from yolov7_utils.general import set_logging, check_img_size, non_max_suppression
 from yolov7_utils.torch_utils import select_device
 
-class CNN_Detector():
-    
+# Load settings
+import yaml
+with open('settings.yaml', 'r') as stream:
+    try:
+        settings = yaml.safe_load(stream)
+    except yaml.YAMLError as e:
+        print(e)
 
+class CNN_Detector():
     def __init__(self, weights_fname, image_size, confidence_thresh=0.5, iou_thresh = 0.45):
         # Initialize
         set_logging()
-        self.device = select_device(INFERENCE_DEVICE)
+        self.device = select_device(settings['INFERENCE_DEVICE'])
         self.conf_thresh = confidence_thresh
         self.iou_thresh = iou_thresh
 

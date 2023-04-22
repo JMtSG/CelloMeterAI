@@ -33,3 +33,31 @@ class ImageProcessor:
                 tile_num += 1
             y += stride
         return tiles
+
+
+if __name__=='__main__':
+    import sys
+    import cv2
+    import yaml
+
+    # Load settings
+    with open('settings.yaml', 'r') as stream:
+        try:
+            settings = yaml.safe_load(stream)
+        except yaml.YAMLError as e:
+            print(e)
+
+    img_fpath = sys.argv[1]
+    img = cv2.imread(img_fpath)
+    img = cv2.resize(img, (int(img.shape[1] * settings['ZOOM_FACTOR']), 
+                        int(img.shape[0] * settings['ZOOM_FACTOR'])))
+
+    image_processor = ImageProcessor()
+    img_tiles = image_processor.generate_tiles(img,
+                                                settings['CNN_INPUT_DIM'],
+                                                settings['TILE_OVERLAP_FACTOR'])
+
+    for tile_idx,(tile,(tile_x,tile_y), adjacent_tile_idxs) in enumerate(img_tiles):
+        cv2.imwrite(f"{sys.argv[2]}/%03d.jpg"%tile_idx, tile)
+    
+    print("Generated %d tiles"%len(img_tiles))
