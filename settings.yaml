@@ -26,7 +26,7 @@ ZOOM_FACTOR: 7
 # Percentage overlap between tiles
 TILE_OVERLAP_FACTOR: 0.3
 
-# Colours for the annotating box; (R,G,B)
+# Colours for the annotating box; [R,G,B]
 COLOURS:
   REGULAR_CELL: [255, 0, 255]
   ABNORMAL_CELL: [255, 0, 0]
@@ -37,3 +37,4 @@ ANNOTATION_THICKNESS: 2
 CNN_INPUT_DIM: 640     # square image
 
 INFERENCE_DEVICE: '0'  # '0', '1', etc. for GPU, 'cpu' for CPU
+NUM_WORKERS: 1    # Number of concurrent processing streams

@@ -1,7 +1,7 @@
 print("""\n
       ____________________________________
      |                                    |
-     |      Lily's Cell Counter: v1.0     |
+     |      Lily's Cell Counter: v1.1     |
      |____________________________________|""")
 print("      - Developed by John Mai · Apr 2023 -\n")
 import warnings
@@ -17,12 +17,15 @@ def show_exception_and_exit(exc_type, exc_value, tb):	# run this on error
     import traceback
     print('\n\n')
     traceback.print_exception(exc_type, exc_value, tb)
+    with open('ERROR.LOG', 'w') as f:
+        traceback.print_exception(exc_type, exc_value, tb, file=f)
     exit_hang()
     sys.exit(-1)
 
 sys.excepthook = show_exception_and_exit
 print("Initialising... ", end='', flush=True)
 import numpy as np
+import torch
 import cv2
 import os
 import glob
@@ -31,6 +34,9 @@ from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font
 from openpyxl.utils import get_column_letter
 import yaml
+import queue
+import threading
+import concurrent.futures
 
 from image_processor import ImageProcessor
 from CNN import CNN_Detector
@@ -48,6 +54,13 @@ with open('settings.yaml', 'r') as stream:
         COLOUR_BLOB_CLUSTER = tuple(settings['COLOURS']['BLOB_CLUSTER'][::-1])
     except yaml.YAMLError as e:
         print(e)
+
+# Define whether we want to skip every 2nd, 3rd, etc. image when displaying cell detections
+if settings['INFERENCE_DEVICE']=='cpu':
+    # PROGRESS_IMG_DISP_STRIDE = settings['NUM_WORKERS']
+    PROGRESS_IMG_DISP_STRIDE = 3
+else:
+    PROGRESS_IMG_DISP_STRIDE = 10
 
 def get_IDs_to_discard(detections_tile_A, detections_tile_B):
     # Return a list of detection IDs from tile A that overlap with detections from tile B
@@ -154,7 +167,35 @@ def generate_report(input_data, output_fname):
     # Save the workbook
     wb.save(output_fname)
 
-def run_object_detection(input_img_fnames, image_processor, cnn_detector):
+def run_inference(tile_idx, tile, tile_x, tile_y, cnn_detector):
+    # # Pre-process image
+    # img = cnn_detector.letterbox(tile, cnn_detector.image_size, stride=cnn_detector.stride)[0].copy()  # Padded resize
+    # img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, re-order to DxHxW
+    # img = np.ascontiguousarray(img)
+    # img = torch.from_numpy(img).to(cnn_detector.device)
+    # img = img.half() if cnn_detector.half else img.float()  # uint8 to fp16/32
+    # img /= 255.0  # 0 - 255 to 0.0 - 1.0
+    # if img.ndimension() == 3:
+    #     img = img.unsqueeze(0)
+    ### Run the CNN ###
+    detections = cnn_detector.detect(tile)
+    return detections, (tile_idx, tile_x, tile_y)
+
+def display_detection_progression(img, detection, detection_id, title, bbox_coords):
+    # Annotate the detections found on this tile on the full image (unscaled)
+    # Need to scale the coordinates back to the original image size
+    x1,y1,x2,y2 = np.round(bbox_coords/settings['ZOOM_FACTOR']).astype(int)
+    if detection[0]==0:     # normal cell
+        cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_REGULAR_CELL, 1)
+    elif detection[0]==1:   # abnormal looking cell
+        cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_ABNORMAL_CELL, 1)
+    elif detection[0]==2:   # blob cluster of cells
+        cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_BLOB_CLUSTER, 1)
+    if detection_id%PROGRESS_IMG_DISP_STRIDE==0:   # update image every Nth detection
+        cv2.imshow(title, img)
+        cv2.waitKey(1)
+
+def count_cells(input_img_fnames, image_processor, cnn_detector):
     # Load each image one at a time and process
     cell_count_summary = {}
     detection_id = 0    # unique serial ID for each detection across the whole image
@@ -171,43 +212,73 @@ def run_object_detection(input_img_fnames, image_processor, cnn_detector):
         img_tiles = image_processor.generate_tiles(img,
                                                     settings['CNN_INPUT_DIM'],
                                                     settings['TILE_OVERLAP_FACTOR'])
-
-        cell_detections = []    # a list of tuples, (tile index, detection serial ID, class, confidence, x1, y1, x2, y2, overlapping_tiles)
-        for tile_idx,(tile,(tile_x,tile_y), adjacent_tile_idxs) in enumerate(img_tiles):
-            # Generate status bar and percentage indicator for displaying progress
-            # In this loop, maximum progress caps out at 90%
-            completion_pc = (tile_idx+1)/len(img_tiles) * 0.9
-            hash_symbol_cnt = round(completion_pc*STATUS_BAR_LEN)
-            status_bar = '[' + '#'*hash_symbol_cnt + '-'*(STATUS_BAR_LEN-hash_symbol_cnt) + ']'
-            print(f"{status_bar} %d%%"%round(completion_pc*100.0), end='\r')
-            
-            ### Run the CNN ###
-            detections = cnn_detector.detect(tile)
-            # Go through the detected objects
-            for detection in detections:
-                # Transform bounding box coordinates from tile frame to full image frame
-                x1 = int(detection[2]) + tile_x
-                y1 = int(detection[3]) + tile_y
-                x2 = int(detection[4]) + tile_x
-                y2 = int(detection[5]) + tile_y
-                # (tile index, serial ID, class enum, confidence score, bounding box coordinates)
-                cell_detections.append((tile_idx, detection_id, detection[0], detection[1], x1, y1, x2, y2))
-                detection_id += 1
-                # Annotate the detections found on this tile on the full image (unscaled)
-                if settings['LIVE_DISPLAY']:
-                    # Need to scale the coordinates back to the original image size
-                    x1,y1,x2,y2 = np.round(np.r_[x1,y1,x2,y2]/settings['ZOOM_FACTOR']).astype(int)
-                    if detection[0]==0:     # normal cell
-                        cv2.rectangle(display_img, (x1, y1), (x2, y2), COLOUR_REGULAR_CELL, 1)
-                    elif detection[0]==1:   # abnormal looking cell
-                        cv2.rectangle(display_img, (x1, y1), (x2, y2), COLOUR_ABNORMAL_CELL, 1)
-                    elif detection[0]==2:   # blob cluster of cells
-                        cv2.rectangle(display_img, (x1, y1), (x2, y2), COLOUR_BLOB_CLUSTER, 1)
-                    cv2.imshow(base_fname, display_img)
-                    cv2.waitKey(1)
+        
+        cell_detections = []    # a list of tuples, (tile index, detection serial ID, class, confidence, x1, y1, x2, y2)
+        if settings['NUM_WORKERS']>1:
+            # Create a ThreadPoolExecutor with a maximum number of threads
+            with concurrent.futures.ThreadPoolExecutor(max_workers=settings['NUM_WORKERS']) as executor:
+                # Submit the processing of each img_tiles object to the executor and store the resulting future object
+                futures = [executor.submit(run_inference, tile_idx, tile, tile_x, tile_y, cnn_detector) 
+                        for tile_idx,(tile,(tile_x,tile_y), _) in enumerate(img_tiles)]
+                # Wait for all futures to complete
+                # concurrent.futures.wait(futures)      # Blocking delay while we wait for the tiles to be processed
+                completed_tiles_count = 0
+                while futures:                          # Delay that allows to run code in the main thread while we wait
+                    # Check for tiles processed
+                    completed_tiles, _ = concurrent.futures.wait(futures, timeout=0.001)
+                    # Remove the completed futures from the list
+                    futures = [f for f in futures if not f.done()]
+                    completed_tiles_count += len(completed_tiles)
+                    # Generate status bar and percentage indicator for displaying progress
+                    # In this loop, maximum progress caps out at 90%
+                    completion_pc = (completed_tiles_count)/len(img_tiles) * 0.9
+                    hash_symbol_cnt = round(completion_pc*STATUS_BAR_LEN)
+                    status_bar = '[' + '#'*hash_symbol_cnt + '-'*(STATUS_BAR_LEN-hash_symbol_cnt) + ']'
+                    print(f"{status_bar} %d%%"%round(completion_pc*100.0), end='\r')
+                    
+                    # Loop through all the results if there are any
+                    if completed_tiles:
+                        for model_output in completed_tiles:
+                            detections, (tile_idx, tile_x, tile_y) = model_output.result()
+                            for detection in detections:
+                                # Transform bounding box coordinates from tile frame to full image frame
+                                x1 = int(detection[2]) + tile_x
+                                y1 = int(detection[3]) + tile_y
+                                x2 = int(detection[4]) + tile_x
+                                y2 = int(detection[5]) + tile_y
+                                # (tile index, serial ID, class enum, confidence score, bounding box coordinates)
+                                cell_detections.append((tile_idx, detection_id, detection[0], detection[1], x1, y1, x2, y2))
+                                detection_id += 1
+                                # Annotate the detections found on this tile on the full image (unscaled)
+                                if settings['LIVE_DISPLAY']:
+                                    display_detection_progression(display_img, detection, detection_id, base_fname, np.r_[x1,y1,x2,y2])
+        else:   # Single worker/thread
+            for tile_idx,(tile,(tile_x,tile_y), adjacent_tile_idxs) in enumerate(img_tiles):
+                # Generate status bar and percentage indicator for displaying progress
+                # In this loop, maximum progress caps out at 90%
+                completion_pc = (tile_idx+1)/len(img_tiles) * 0.9
+                hash_symbol_cnt = round(completion_pc*STATUS_BAR_LEN)
+                status_bar = '[' + '#'*hash_symbol_cnt + '-'*(STATUS_BAR_LEN-hash_symbol_cnt) + ']'
+                print(f"{status_bar} %d%%"%round(completion_pc*100.0), end='\r')
+                
+                ### Run the CNN ###
+                detections = cnn_detector.detect(tile)
+                # Go through the detected objects
+                for detection in detections:
+                    # Transform bounding box coordinates from tile frame to full image frame
+                    x1 = int(detection[2]) + tile_x
+                    y1 = int(detection[3]) + tile_y
+                    x2 = int(detection[4]) + tile_x
+                    y2 = int(detection[5]) + tile_y
+                    # (tile index, serial ID, class enum, confidence score, bounding box coordinates)
+                    cell_detections.append((tile_idx, detection_id, detection[0], detection[1], x1, y1, x2, y2))
+                    detection_id += 1
+                    # Annotate the detections found on this tile on the full image (unscaled)
+                    if settings['LIVE_DISPLAY']:
+                        display_detection_progression(display_img, detection, detection_id, base_fname, np.r_[x1,y1,x2,y2])
         cell_detections = np.array(cell_detections)
-        # print(f"{len(cell_detections)} cell_detections")
 
+        # Now eliminate cells that were counted twice; this happens when tiles overlap and the same cell shows up on more than one tile
         if cell_detections.shape[0]>0:
             # Create an array that contains entries of bounding box coordinates, the tile index, and
             # For each tile, check if any detection is too close to a detection in any tile to the right or below the tile
@@ -243,8 +314,7 @@ def run_object_detection(input_img_fnames, image_processor, cnn_detector):
                             cv2.rectangle(display_img, (x1, y1), (x2, y2), COLOUR_BLOB_CLUSTER, 1)
                     cv2.imshow(base_fname, display_img)
                     cv2.waitKey(1)
-            # Discard repeated cell detections
-            # unique_cell_detections = np.unique(unique_cell_detections, axis=0)
+            ## Discard repeated cell detections
             # Create a boolean mask for rows to delete
             mask = np.isin(cell_detections[:, 1].astype('int'), np.array(detection_IDs_to_discard).astype('int'))
             unique_cell_detections = np.delete(cell_detections, np.where(mask), axis=0)
@@ -257,14 +327,12 @@ def run_object_detection(input_img_fnames, image_processor, cnn_detector):
                 if detection[2]==0:     # normal cell
                     cell_count['normal'] += 1
                     cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_REGULAR_CELL, settings['ANNOTATION_THICKNESS'])
-                    # cv2.rectangle(img, (x1, y1), (x2, y2), colors[tile_idx%6], ANNOTATION_THICKNESS)
                 elif detection[2]==1:   # abnormal looking cell
                     cell_count['abnormal'] += 1
                     cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_ABNORMAL_CELL, settings['ANNOTATION_THICKNESS'])
                 elif detection[2]==2:   # blob cluster of cells
                     cell_count['cluster'] += 1
                     cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_BLOB_CLUSTER, settings['ANNOTATION_THICKNESS'])
-                # cv2.circle(tile, (d[2],d[3]), radius, color, thickness)
             print(f"\nCell count: {cell_count['normal']} normal, {cell_count['abnormal']} abnormal, {cell_count['cluster']} clusters")
             cell_count_summary[f"{base_fname}"] = [cell_count['normal'], cell_count['abnormal'], cell_count['cluster']]
         else:
@@ -277,12 +345,20 @@ def run_object_detection(input_img_fnames, image_processor, cnn_detector):
                                         int(settings['OUTPUT_IMG_W']/img.shape[1] * img.shape[0])))
         cv2.imwrite(f"{settings['OUTPUT_FOLDER']}/{base_fname}", output_img)
         cv2.destroyAllWindows()
+        # except RuntimeError as e:
+        #     if "at non-singleton dimension 3" in str(e):
+        #         print("*** ERROR: Possibly due to exceeding computational resources ***")
+        #         print("Reverting to single-worker processing")
+        #     else:
+        #         print(f"RuntimeError: {e}")
         # except:
         #     print(f"Error on image {base_fname}")
         print('')
-    
+        
         # Generate an excel spreadsheet report for the data we have so far
         generate_report(cell_count_summary, f"{settings['OUTPUT_FOLDER']}/{settings['REPORT_FILE_NAME']}.xlsx")
+
+
 
 if __name__=='__main__':
     image_processor = ImageProcessor()  # For tiling & un-tiling images
@@ -304,9 +380,14 @@ if __name__=='__main__':
             file_path = os.path.join(settings['OUTPUT_FOLDER'], filename)
             if os.path.isfile(file_path) and any(file_path.endswith(ext.replace('*','')) for ext in settings['VALID_INPUT_FILETYPES']):
                 os.remove(file_path)
+    # # Delete the error log file
+    # try:
+    #     os.remove('ERROR.LOG')
+    # except OSError as e:
+    #     pass
 
     # Run object detection on all the images
-    run_object_detection(input_img_fnames, image_processor, cnn_detector)
+    count_cells(input_img_fnames, image_processor, cnn_detector)
 
     # Print exit message and hang until key is pressed
     run_duration = time.time()-PROGRAM_START_TIME
