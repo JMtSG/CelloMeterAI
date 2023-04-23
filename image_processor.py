@@ -1,10 +1,23 @@
-import numpy as np
 
 class ImageProcessor:
     def __init__(self):
+        """
+        Initializes an ImageProcessor object
+        """
         pass
 
     def generate_tiles(self, img, tile_size, overlap_factor):
+        """
+        Generates tiles from an input image with a specified tile size and overlap factor.
+
+        Args:
+        - img: A numpy array representing an image.
+        - tile_size: An integer representing the size of the tile.
+        - overlap_factor: A float representing the overlap factor.
+
+        Returns:
+        - A list of tuples, each containing a tile, its location, and a list of indices of adjacent tiles.
+        """
         height, width = img.shape[:2]
         overlap = int(tile_size * overlap_factor)
         stride = tile_size - overlap

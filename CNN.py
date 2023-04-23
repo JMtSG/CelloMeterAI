@@ -16,8 +16,35 @@ with open('settings.yaml', 'r') as stream:
         print(e)
 
 class CNN_Detector():
+    """
+    YOLOv7 Deep Convolutional Neural Network object detection class
+
+    Attributes:
+    - device (torch.device): The device (CPU or GPU) used for inference.
+    - conf_thresh (float): Confidence threshold for detections.
+    - iou_thresh (float): IoU threshold for NMS.
+    - model (torch.nn.Module): The pre-trained detection model.
+    - stride (int): The stride of the model.
+    - image_size (tuple): The size of the input image for the detector.
+    - half (bool): Whether or not the model is in half precision.
+  
+    Methods:
+    - detect(input_img): Perform object detection on an input image.
+    - letterbox(img, new_shape, color, auto, scaleFill, scaleup, stride): Resize and pad image while
+      meeting stride-multiple constraints.
+    - scale_coords(img1_shape, coords, img0_shape, ratio_pad): Rescale coordinates (xyxy) from img1_shape
+      to img0_shape.
+    """
     def __init__(self, weights_fname, image_size, confidence_thresh=0.5, iou_thresh = 0.45):
-        # Initialize
+        """
+        Initializes the CNN_Detector object.
+        Args:
+            weights_fname (str): The name of the file containing the pre-trained model's weights.
+            image_size (int): The size of the input images.
+            confidence_thresh (float, optional): The minimum confidence threshold for object detection. Default is 0.5.
+            iou_thresh (float, optional): The minimum intersection over union (IoU) threshold for object detection. Default is 0.45.
+        """
+        # Initialise
         set_logging()
         self.device = select_device(settings['INFERENCE_DEVICE'])
         self.conf_thresh = confidence_thresh
@@ -37,6 +64,13 @@ class CNN_Detector():
             self.model(torch.zeros(1, 3, image_size, image_size).to(self.device).type_as(next(self.model.parameters())))  # run once
 
     def detect(self, input_img):
+        """
+        Detects objects in the input image.
+        Args:
+            input_img (numpy.ndarray): The input image.
+        Returns:
+            numpy.ndarray: An array containing the coordinates and class IDs of the detected objects.
+        """
         # Pre-process image
         img = self.letterbox(input_img, self.image_size, stride=self.stride)[0].copy()  # Padded resize
         img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, re-order to DxHxW
@@ -67,6 +101,21 @@ class CNN_Detector():
         return results
 
     def letterbox(self, img, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleFill=False, scaleup=True, stride=32):
+        """
+        Resizes and pads an image to meet stride-multiple constraints.
+        Args:
+            img (numpy.ndarray): The input image.
+            new_shape (tuple(int, int), optional): The desired shape of the output image. Default is (640, 640).
+            color (tuple(int, int, int), optional): The RGB color value to use for padding. Default is (114, 114, 114).
+            auto (bool, optional): Whether to use the minimum rectangle or not. Default is True.
+            scaleFill (bool, optional): Whether to stretch the image or not. Default is False.
+            scaleup (bool, optional): Whether to scale up the image or not. Default is True.
+            stride (int, optional): The stride of the model. Default is 32.
+        Returns:
+            numpy.ndarray: The resized and padded image.
+            tuple: The ratio of the width and height of the new image to the old image.
+            tuple: The amount of padding added to the left and right sides and the top and bottom sides of the image.
+        """
         # Resize and pad image while meeting stride-multiple constraints
         shape = img.shape[:2]  # current shape [height, width]
         if isinstance(new_shape, int):
@@ -99,6 +148,16 @@ class CNN_Detector():
         return img, ratio, (dw, dh)
 
     def scale_coords(self, img1_shape, coords, img0_shape, ratio_pad=None):
+        """
+        Rescales the coordinates of an image.
+        Args:
+            img1_shape (tuple(int, int)): The shape of the input image.
+            coords (numpy.ndarray): The coordinates to rescale.
+            img0_shape (tuple(int, int)): The desired shape of the output image.
+            ratio_pad (tuple(float, float), optional): The ratio of the width and height of the new image to the old image. Default is None.
+        Returns:
+            numpy.ndarray: The rescaled coordinates.
+        """
         # Rescale coords (xyxy) from img1_shape to img0_shape
         if ratio_pad is None:  # calculate from img0_shape
             gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
