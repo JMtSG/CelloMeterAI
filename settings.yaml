@@ -36,5 +36,5 @@ ANNOTATION_THICKNESS: 2
 # Frame size for inputs to CNN
 CNN_INPUT_DIM: 640     # square image
 
-INFERENCE_DEVICE: '0'  # '0', '1', etc. for GPU, 'cpu' for CPU
-NUM_WORKERS: 1    # Number of concurrent processing streams
+INFERENCE_DEVICE: 'cpu'  # '0', '1', etc. for GPU, 'cpu' for CPU
+NUM_WORKERS: 2    # Number of concurrent processing streams

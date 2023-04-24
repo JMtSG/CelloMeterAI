@@ -1,7 +1,7 @@
 print("""\n
       ____________________________________
      |                                    |
-     |         CelloMeterAI: v1.1         |
+     |         CelloMeterAI: v1.2         |
      |____________________________________|""")
 print("      - Developed by John Mai · Apr 2023 -\n")
 import warnings
