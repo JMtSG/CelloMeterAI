@@ -7,13 +7,13 @@ OUTPUT_FOLDER: './results'
 OUTPUT_IMG_W: 1920
 REPORT_FILE_NAME: 'cell_count_summary'
 
-VALID_INPUT_FILETYPES: ['*.jpg', '*.png', '*.JPG', '*.JPEG', '*.PNG']
+VALID_INPUT_FILETYPES: ['*.jpg', '*.png', '*.tiff', '*.tif', '*.JPG', '*.JPEG', '*.PNG', '*.TIFF', '*.TIF']
 
 # Minimum confidence level for CNN to mark a detection
 CONFIDENCE_THRESHOLD: 0.4
 
 # Display image during processing?
-LIVE_DISPLAY: True
+LIVE_DISPLAY: False
 
 # Maximum allowed overlap percentage between cell detections of adjacent tiles
 # Too high and cells in overlapping tile regions may be counted twice
@@ -24,7 +24,7 @@ MAX_OVERLAP_PERCENTAGE: 0.5
 ZOOM_FACTOR: 7
 
 # Percentage overlap between tiles
-TILE_OVERLAP_FACTOR: 0.3
+TILE_OVERLAP_FACTOR: 0.25
 
 # Colours for the annotating box; [R,G,B]
 COLOURS:
@@ -37,4 +37,4 @@ ANNOTATION_THICKNESS: 2
 CNN_INPUT_DIM: 640     # square image
 
 INFERENCE_DEVICE: 'cpu'  # '0', '1', etc. for GPU, 'cpu' for CPU
-NUM_WORKERS: 2    # Number of concurrent processing streams
+NUM_WORKERS: 1    # Number of concurrent processing streams

@@ -8,7 +8,7 @@ class ImageProcessor:
 
     def generate_tiles(self, img, tile_size, overlap_factor):
         """
-        Generates grayscale tiles from an input image with a specified tile size and overlap factor.
+        Generates tiles from an input image with a specified tile size and overlap factor.
 
         Args:
         - img: A numpy array representing an image.
@@ -18,10 +18,6 @@ class ImageProcessor:
         Returns:
         - A list of tuples, each containing a tile, its location, and a list of indices of adjacent tiles.
         """
-        # Convert to grayscale, but retain 3-channels
-        grayscale_img = cv2.cvtColor(img.copy(), cv2.COLOR_BGR2GRAY)
-        grayscale_img = cv2.merge([grayscale_img, grayscale_img, grayscale_img])
-
         height, width = img.shape[:2]
         overlap = int(tile_size * overlap_factor)
         stride = tile_size - overlap
@@ -32,7 +28,7 @@ class ImageProcessor:
         while y < height:
             x = 0
             while x < width:
-                tile = grayscale_img[y:y+tile_size, x:x+tile_size]
+                tile = img[y:y+tile_size, x:x+tile_size]
                 # Create a list of indexes for all the tiles that this tile will overlap with
                 adjacent_tile_idxs = []
                 # if x > 0:

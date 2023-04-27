@@ -1,7 +1,7 @@
 print("""\n
       ____________________________________
      |                                    |
-     |         CelloMeterAI: v1.2         |
+     |         CelloMeterAI: v1.3         |
      |____________________________________|""")
 print("      - Developed by John Mai · Apr 2023 -\n")
 import warnings
@@ -70,15 +70,18 @@ def get_IDs_to_discard(detections_tile_A, detections_tile_B):
     - detections_tile_B (List[List]): List of detections in tile B, each detection is represented as [tile index, class enum, confidence score, bounding box coordinates]
     
     Returns:
-    - detection_IDs_to_discard_A (List): List of detection IDs to discard from tile A that overlap with detections from tile B
+    - detection_IDs_to_discard (List): List of detection IDs to discard; the smaller bounding box of the two overlapping are discarded
     """
-    detection_IDs_to_discard_A = []
+    detection_IDs_to_discard = []
     for detection_A in detections_tile_A:
         for detection_B in detections_tile_B:
             percent_overlap = calc_rect_overlap(detection_A[4:8], detection_B[4:8])
             if percent_overlap>settings['MAX_OVERLAP_PERCENTAGE']:
-                detection_IDs_to_discard_A.append(detection_A[1])
-    return detection_IDs_to_discard_A
+                if bbox_area(detection_A[4:8]) > bbox_area(detection_B[4:8]):
+                    detection_IDs_to_discard.append(detection_B[1])
+                else:
+                    detection_IDs_to_discard.append(detection_A[1])
+    return detection_IDs_to_discard
 
 def calc_rect_overlap(coords_A, coords_B):
     """
@@ -104,17 +107,26 @@ def calc_rect_overlap(coords_A, coords_B):
     intersection_area = intersection_width * intersection_height
     
     # Calculate the areas of both bounding boxes
-    bb1_area = (coords_B[2] - coords_B[0]) * (coords_B[3] - coords_B[1])
-    bb2_area = (coords_B[2] - coords_B[0]) * (coords_B[3] - coords_B[1])
+    bbA_area = bbox_area(coords_A)
+    bbB_area = bbox_area(coords_B)
     
     # Calculate the percentage overlap (overlap_area / total area)
     # overlap_percent = (intersection_area / float(bb1_area + bb2_area - intersection_area))
     # Calculate the percentage overlap (100% if any bounding box is enveloped by another)
-    overlap_percent = max(intersection_area/float(bb1_area),
-                          intersection_area/float(bb2_area))
+    overlap_percent = max(intersection_area/float(bbA_area),
+                          intersection_area/float(bbB_area))
     
     return overlap_percent
 
+def bbox_area(bbox):
+    """
+    Args:
+    - bbox (List): Bounding box coordinates [x1, y1, x2, y2], where (x1,y1) represents the top left corner and (x2,y2) represents the bottom right corner.
+
+    Returns:
+    - area (float): The area of the bounding box (pixels^2)
+    """
+    return abs(bbox[2]-bbox[0])*abs(bbox[3]-bbox[1])
 
 def generate_report(input_data, output_fname):
     """
@@ -279,7 +291,7 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
         img_tiles = image_processor.generate_tiles(img,
                                                     settings['CNN_INPUT_DIM'],
                                                     settings['TILE_OVERLAP_FACTOR'])
-        
+
         cell_detections = []    # a list of tuples, (tile index, detection serial ID, class, confidence, x1, y1, x2, y2)
         if settings['NUM_WORKERS']>1:
             # Create a ThreadPoolExecutor with a maximum number of threads
@@ -332,6 +344,7 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
                 detections = cnn_detector.detect(tile)
                 # Go through the detected objects
                 for detection in detections:
+                    ## detection = [class_enum, confidence, x1, y1, x2, y2]
                     # Transform bounding box coordinates from tile frame to full image frame
                     x1 = int(detection[2]) + tile_x
                     y1 = int(detection[3]) + tile_y
@@ -348,7 +361,7 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
         # Now eliminate cells that were counted twice; this happens when tiles overlap and the same cell shows up on more than one tile
         if cell_detections.shape[0]>0:
             # Create an array that contains entries of bounding box coordinates, the tile index, and
-            # For each tile, check if any detection is too close to a detection in any tile to the right or below the tile
+            # For each tile, check if any detection is overlapping a detection in any tile to the right or below the tile
             detection_IDs_to_discard = []
             for tile_idx,(tile,(tile_x,tile_y), adjacent_tile_idxs) in enumerate(img_tiles):
                 for adj_tile_idx in adjacent_tile_idxs:
@@ -430,7 +443,8 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
 if __name__=='__main__':
     image_processor = ImageProcessor()  # For tiling & un-tiling images
     cnn_detector = CNN_Detector(f"./{settings['MODEL_NAME']}",
-                                settings['CNN_INPUT_DIM'],
+                                settings['INFERENCE_DEVICE'],
+                                image_size = settings['CNN_INPUT_DIM'],
                                 confidence_thresh=settings['CONFIDENCE_THRESHOLD'])
 
     # Get filepaths of input images
