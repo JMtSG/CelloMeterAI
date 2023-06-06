@@ -54,13 +54,6 @@ with open('settings.yaml', 'r') as stream:
     except yaml.YAMLError as e:
         print(e)
 
-# Define whether we want to skip every 2nd, 3rd, etc. image when displaying cell detections
-if settings['INFERENCE_DEVICE']=='cpu':
-    # PROGRESS_IMG_DISP_STRIDE = settings['NUM_WORKERS']
-    PROGRESS_IMG_DISP_STRIDE = 3
-else:
-    PROGRESS_IMG_DISP_STRIDE = 10
-
 def get_IDs_to_discard(detections_tile_A, detections_tile_B):
     """
     Return a list of detection IDs from tile A that overlap with detections from tile B
@@ -238,14 +231,14 @@ def display_detection_progression(img, detection, detection_id, title, bbox_coor
     """
     # Annotate the detections found on this tile on the full image (unscaled)
     # Need to scale the coordinates back to the original image size
-    x1,y1,x2,y2 = np.round(bbox_coords/settings['ZOOM_FACTOR']).astype(int)
+    x1,y1,x2,y2 = np.round(bbox_coords/(settings['ZOOM_FACTOR']*settings['DISPLAY_DOWNSCALE_FACTOR'])).astype(int)
     if detection[0]==0:     # normal cell
         cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_REGULAR_CELL, 1)
     elif detection[0]==1:   # abnormal looking cell
         cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_ABNORMAL_CELL, 1)
     elif detection[0]==2:   # blob cluster of cells
         cv2.rectangle(img, (x1, y1), (x2, y2), COLOUR_BLOB_CLUSTER, 1)
-    if detection_id%PROGRESS_IMG_DISP_STRIDE==0:   # update image every Nth detection
+    if detection_id%settings['PROGRESS_IMG_DISP_STRIDE']==0:   # update image every Nth detection
         cv2.imshow(title, img)
         cv2.waitKey(1)
 
@@ -283,9 +276,11 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
         print(f"Processing image ({file_idx+1}/{len(input_img_fnames)}): \"{base_fname}\"")
         # try:
         orig_img = cv2.imread(input_fname)
-        display_img = orig_img.copy()
         orig_img_shape = orig_img.shape[:2]
-        # Scale up the image
+        # Downscale the image used for live display
+        display_img = cv2.resize(orig_img.copy(), (int(orig_img_shape[1] / settings['DISPLAY_DOWNSCALE_FACTOR']), 
+                                                   int(orig_img_shape[0] / settings['DISPLAY_DOWNSCALE_FACTOR'])))
+        # Scale up the image to prepare it for tiling
         img = cv2.resize(orig_img, (int(orig_img_shape[1] * settings['ZOOM_FACTOR']), 
                             int(orig_img_shape[0] * settings['ZOOM_FACTOR'])))
         img_tiles = image_processor.generate_tiles(img,
@@ -363,6 +358,8 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
             # Create an array that contains entries of bounding box coordinates, the tile index, and
             # For each tile, check if any detection is overlapping a detection in any tile to the right or below the tile
             detection_IDs_to_discard = []
+            blank_display_img = cv2.resize(orig_img.copy(), (int(orig_img_shape[1] / settings['DISPLAY_DOWNSCALE_FACTOR']), 
+                                                             int(orig_img_shape[0] / settings['DISPLAY_DOWNSCALE_FACTOR'])))
             for tile_idx,(tile,(tile_x,tile_y), adjacent_tile_idxs) in enumerate(img_tiles):
                 for adj_tile_idx in adjacent_tile_idxs:
                     # Complete the rest of the progress bar here
@@ -382,10 +379,10 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
                 if settings['LIVE_DISPLAY']:
                     mask = np.isin(cell_detections[:, 1].astype('int'), np.array(detection_IDs_to_discard).astype('int'))
                     unique_cell_detections = np.delete(cell_detections.copy(), np.where(mask), axis=0)
-                    display_img = orig_img.copy()
+                    display_img = blank_display_img.copy()
                     for detection in unique_cell_detections:
                         # Need to scale the coordinates back to the original image size
-                        x1, y1, x2, y2 = (detection[4:8]/settings['ZOOM_FACTOR']).astype('int')
+                        x1, y1, x2, y2 = (detection[4:8]/(settings['ZOOM_FACTOR']*settings['DISPLAY_DOWNSCALE_FACTOR'])).astype('int')
                         if detection[2]==0:     # normal cell
                             cv2.rectangle(display_img, (x1, y1), (x2, y2), COLOUR_REGULAR_CELL, 1)
                         elif detection[2]==1:   # abnormal looking cell
@@ -422,7 +419,7 @@ def count_cells(input_img_fnames: List[str], image_processor: ImageProcessor,
 
         # Output the an image regardless of whether there are detections
         output_img = cv2.resize(img, (settings['OUTPUT_IMG_W'],
-                                        int(settings['OUTPUT_IMG_W']/img.shape[1] * img.shape[0])))
+                                      int(settings['OUTPUT_IMG_W']/img.shape[1] * img.shape[0])))
         cv2.imwrite(f"{settings['OUTPUT_FOLDER']}/{base_fname}", output_img)
         cv2.destroyAllWindows()
         # except RuntimeError as e:

@@ -4,7 +4,7 @@ MODEL_NAME: 'model_weights.pt'
 
 # This output folder gets cleared each run, don't store anything in here
 OUTPUT_FOLDER: './results'
-OUTPUT_IMG_W: 1920
+OUTPUT_IMG_W: 3000
 REPORT_FILE_NAME: 'cell_count_summary'
 
 VALID_INPUT_FILETYPES: ['*.jpg', '*.png', '*.tiff', '*.tif', '*.JPG', '*.JPEG', '*.PNG', '*.TIFF', '*.TIF']
@@ -14,6 +14,10 @@ CONFIDENCE_THRESHOLD: 0.4
 
 # Display image during processing?
 LIVE_DISPLAY: False
+# Factor to downscale images by for live display. Useful for high resolution input images.
+DISPLAY_DOWNSCALE_FACTOR: 2.5
+# Define whether we want to skip every 2nd, 3rd, etc. image when displaying cell detections
+PROGRESS_IMG_DISP_STRIDE: 5
 
 # Maximum allowed overlap percentage between cell detections of adjacent tiles
 # Too high and cells in overlapping tile regions may be counted twice
@@ -21,7 +25,7 @@ LIVE_DISPLAY: False
 MAX_OVERLAP_PERCENTAGE: 0.5
 
 # Scale up the input image by this factor before passing through CNN
-ZOOM_FACTOR: 7
+ZOOM_FACTOR: 4
 
 # Percentage overlap between tiles
 TILE_OVERLAP_FACTOR: 0.25
@@ -31,10 +35,10 @@ COLOURS:
   REGULAR_CELL: [255, 0, 255]
   ABNORMAL_CELL: [255, 0, 0]
   BLOB_CLUSTER: [255, 128, 0]
-ANNOTATION_THICKNESS: 2
+ANNOTATION_THICKNESS: 3
 
 # Frame size for inputs to CNN
 CNN_INPUT_DIM: 640     # square image
 
-INFERENCE_DEVICE: 'cpu'  # '0', '1', etc. for GPU, 'cpu' for CPU
+INFERENCE_DEVICE: '0'  # '0', '1', etc. for GPU, 'cpu' for CPU
 NUM_WORKERS: 1    # Number of concurrent processing streams

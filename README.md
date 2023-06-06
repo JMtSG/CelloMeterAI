@@ -16,12 +16,14 @@ The program development and CNN fine tuning were based around 640x480 input imag
 
 
 ## Usage (from pre-built Windows release)
-- Copy your images into the `input_images` directory.
+- Download a .zip of the program from [the releases page](https://github.com/JMtSG/CelloMeterAI/releases) and unzip it on your computer
+- Copy your images into the `input_images` folder
 - Configure the program in `settings.yaml` (optional)
 - Double click `CelloMeterAI` to run
 - You'll find annotated images in the `results` directory. There will also be a .xlsx spreadsheet summary of the results included.
 
 ## Usage (from source code)
+- Clone this repo to your local machine
 - Copy your images into the `input_images` directory.
 - Ensure dependencies are installed: `pip install -r requirements.txt`
 - Configure the program in `settings.yaml` (optional)
@@ -39,6 +41,8 @@ The `settings.yaml` file contains configuration parameters for this program.
 - `VALID_INPUT_FILETYPES`: A list of valid file extensions for input images.
 - `CONFIDENCE_THRESHOLD`: The minimum confidence level required for a detection to be considered valid.
 - `LIVE_DISPLAY`: If `True`, the input images will be displayed during the counting process.
+- `DISPLAY_DOWNSCALE_FACTOR`: Downscale the input image by this factor when displaying it on-screen.
+- `PROGRESS_IMG_DISP_STRIDE`: To speed up processing, only every N-th frame is displayed on-screen.
 - `MAX_OVERLAP_PERCENTAGE`: The maximum allowed overlap percentage between cell detections of adjacent tiles. Too high and cells in overlapping tile regions may be counted twice; too low and cells that are squished together may be missed.
 - `ZOOM_FACTOR`: The factor by which the input image is scaled up before passing through the CNN.
 - `TILE_OVERLAP_FACTOR`: The percentage overlap between tiles.
